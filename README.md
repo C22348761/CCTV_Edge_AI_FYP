@@ -147,7 +147,7 @@ This experiment will compare object detection vs image classification for real-t
 
 ### Real Data Sources
 
-- **YouTube CCTV Videos (FRAMES)**: 1,637 videos
+- **YouTube CCTV Videos (24 Videos)**: 1,637 frames
 - **Home CCTV Frames**: 11,722 frames
 - **Company CCTV Frames**: 8,807 frames
 - **Total Raw Frames**: ~22,000 frames
