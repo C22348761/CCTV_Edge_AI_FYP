@@ -1,0 +1,7 @@
+path: /workspace/Final-Year-Project/datasets/my_data/synthetic
+train: /workspace/Final-Year-Project/train_fake.txt
+val: /workspace/Final-Year-Project/val_fake.txt
+test: /workspace/Final-Year-Project/test_capped.txt
+
+nc: 1
+names: ['person']

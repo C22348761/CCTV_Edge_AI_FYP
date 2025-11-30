@@ -1,0 +1,7 @@
+path: /workspace/Final-Year-Project/datasets/my_data
+train: /workspace/Final-Year-Project/train.txt
+val: /workspace/Final-Year-Project/val.txt
+test: /workspace/Final-Year-Project/test.txt
+
+nc: 1
+names: ['person']

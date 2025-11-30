@@ -1,0 +1,7 @@
+path: /workspace/Final-Year-Project/datasets/my_data
+train: /workspace/Final-Year-Project/train_capped.txt
+val: /workspace/Final-Year-Project/val_capped.txt
+test: /workspace/Final-Year-Project/test_capped.txt
+
+nc: 1
+names: ['person']
