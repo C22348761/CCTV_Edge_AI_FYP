@@ -78,8 +78,8 @@ FYP/
 
 1. **Data Collection**
 
-   - Collected ~22,000 real CCTV frames from multiple sources:
-     - 1,637 YouTube CCTV videos
+   - Collected 22,166 real CCTV frames from multiple sources:
+     - 24 YouTube CCTV videos (1,637 frames extracted)
      - 11,722 home CCTV frames
      - 8,807 company CCTV frames
 2. **Synthetic Data Generation**
@@ -147,10 +147,10 @@ This experiment will compare object detection vs image classification for real-t
 
 ### Real Data Sources
 
-- **YouTube CCTV Videos**: 1,637 videos
+- **YouTube CCTV Videos**: 24 videos (1,637 frames extracted)
 - **Home CCTV Frames**: 11,722 frames
 - **Company CCTV Frames**: 8,807 frames
-- **Total Raw Frames**: ~22,000 frames
+- **Total Raw Frames**: 22,166 frames
 
 ### Synthetic Data
 
