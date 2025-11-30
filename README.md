@@ -542,7 +542,11 @@ Detailed reproduction instructions will be provided once Experiment 3 is impleme
 
 ## 📝 License
 
-[Add your license information here]
+This project was completed as part of a Final Year Project (FYP) at Technological University Dublin (TU Dublin).
+
+Copyright © 2025 Tadhg Roche
+
+All rights reserved. This work is the intellectual property of the author and was submitted as part of academic requirements. The synthetic dataset may be made available to the university for research purposes, but the real CCTV dataset cannot be shared due to privacy constraints.
 
 ## 👤 Author
 
@@ -560,4 +564,4 @@ Detailed reproduction instructions will be provided once Experiment 3 is impleme
 
 ---
 
-*Last updated: [Current Date]*
+*Last updated: November 2025*
