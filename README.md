@@ -1,567 +1,285 @@
 # Evaluating Synthetic Data Training, Model Architecture, and Quantization for CCTV Analytics on Raspberry Pi 5
 
-This repository contains the complete codebase, experiments, datasets, scripts, and documentation for a Final Year Project investigating whether synthetic CCTV data can effectively train person-detection models comparable to those trained on real CCTV footage. The project also explores model architecture efficiency, INT8 quantization, and edge deployment on Raspberry Pi 5.
+This repository contains the codebase, experiments, scripts, and configuration files for a Final Year Project investigating how training data sources, model architecture, and INT8 quantization affect person detection on CCTV footage when deployed on the Raspberry Pi 5.
 
-## 📋 Table of Contents
+## Full Report
 
-- [Project Overview](#-project-overview)
-- [Project Structure](#-project-structure)
-- [Key Experiments](#-key-experiments)
-- [Dataset Details](#-dataset-details)
-- [Environment Setup](#-environment-setup)
-- [Installation](#-installation)
-- [Pipeline Workflow](#-pipeline-workflow)
-- [Training Models](#-training-models)
-- [Reproducing Experiments](#-reproducing-experiments)
-- [Results Summary](#-results-summary)
-- [Future Work](#-future-work)
+The complete written report for this project is available as a PDF:
+**[docs/FYP_Report_Tadhg_Roche.pdf](docs/FYP_Report_Tadhg_Roche.pdf)**
 
----
+The report contains the full background, methodology, experiment details, results, discussion, and conclusions.
 
-## 🎯 Project Overview
+## Table of Contents
 
-### High-Level Summary
-
-This project investigates three critical questions for edge AI deployment:
-
-1. **Can synthetic data replace real CCTV footage for training?** (Experiment 1)
-2. **How does INT8 quantization affect model performance?** (Experiment 2)
-3. **What's the optimal architecture for edge deployment?** (Experiment 3)
-
-All experiments use YOLO-based object detection, real CCTV clips, synthetic images generated with NanoBanana (Google Gemini), and the Ultralytics training pipeline.
-
-### Research Questions
-
-- **Experiment 1**: Does synthetic CCTV data perform as well as real CCTV data for person detection?
-- **Experiment 2**: Do synthetic-trained and real-trained models degrade differently under INT8 quantization?
-- **Experiment 3**: Is object detection or image classification better for real-time CCTV analytics on Raspberry Pi 5?
+- [Project Overview](#project-overview)
+- [Repository Structure](#repository-structure)
+- [Research Questions and Experiments](#research-questions-and-experiments)
+- [Dataset](#dataset)
+- [Environment Setup](#environment-setup)
+- [Pipeline Workflow](#pipeline-workflow)
+- [Running the Experiments](#running-the-experiments)
+- [Results Summary](#results-summary)
+- [License](#license)
 
 ---
 
-## 📁 Project Structure
+## Project Overview
+
+Most CCTV systems rely on cloud processing or expensive on-camera AI hardware to perform intelligent video analysis. This study evaluates whether affordable real-time person detection is possible on a Raspberry Pi 5 by investigating three factors:
+
+1. The source of training data (real CCTV footage vs generative-model synthetic images)
+2. The choice of detection architecture (lightweight CNN-based YOLO models vs a transformer-based detector)
+3. The impact of INT8 quantization on accuracy, model size, and inference speed
+
+All models are trained using the Ultralytics framework on real and synthetic CCTV datasets, quantized to INT8, and benchmarked on a Raspberry Pi 5.
+
+---
+
+## Repository Structure
 
 ```
-FYP/
-├── configs/                      # YOLO dataset configuration files
-│   ├── mydata.yaml              # Original dataset config
-│   ├── mydata_capped.yaml       # Capped real data config (train/val/test)
-│   └── mydata_synthetic.yaml    # Synthetic data config
-├── data/                        # Dataset split files
-│   ├── train_capped.txt         # Training split (1,795 images)
-│   ├── val_capped.txt           # Validation split (664 images)
-│   ├── test_capped.txt          # Test split (660 images)
-│   ├── train_fake.txt           # Synthetic training split
-│   └── val_fake.txt             # Synthetic validation split
-├── notebooks/                   # Jupyter notebooks for training
-│   └── Experiment_1.ipynb       # Experiment 1 training code
-├── runs/                        # Training outputs and results
-│   ├── real_unfrozen_e50/       # Real data model training run
-│   └── synthetic_unfrozen_e40/  # Synthetic data model training run
-└── scripts/                     # Preprocessing and data pipeline scripts
-    ├── dedupe_by_threshold.py           # Near-duplicate removal using SSCD/FAISS
-    ├── assign_clusters.py               # SSCD scene clustering assignments
-    ├── split.py                         # Train/val/test split creation with capping
-    ├── generate_synthetic_backgrounds.py # Synthetic background generation
-    ├── fake_background_synthetic_person_placement.py # Synthetic person placement
-    └── batch_background_removal.py      # Background extraction from real images
+CCTV_Edge_AI_FYP/
+├── configs/                        # YOLO dataset configuration files
+│   ├── mydata.yaml                 # Base dataset config
+│   ├── mydata_capped.yaml          # Capped real data config (train/val/test)
+│   ├── mydata_synthetic.yaml       # Synthetic data config
+│   └── setup_paths.py              # Utility to rewrite absolute paths
+├── data/                           # Dataset split files (image path lists)
+│   ├── train_capped.txt            # Real training split (1,795 images)
+│   ├── val_capped.txt              # Real validation split (664 images)
+│   ├── test_capped.txt             # Real test split (660 images)
+│   ├── train_fake.txt              # Synthetic training split
+│   └── val_fake.txt                # Synthetic validation split
+├── notebooks/                      # Jupyter notebooks for each experiment
+│   ├── Experiment_1.ipynb          # Real vs synthetic training data
+│   ├── Experiment_2_Ultralytics.ipynb  # YOLO architecture comparison
+│   ├── Experiment_2_RFDETR.ipynb   # RF-DETR transformer comparison
+│   ├── Experiment_3_Quantization.ipynb # ONNX export and INT8 quantization
+│   └── Experiment_4_Synthetic_Ratio.ipynb # Synthetic-to-real ratio study
+└── scripts/                        # Preprocessing and dataset pipeline scripts
+    ├── dedupe_by_threshold.py      # Near-duplicate removal using SSCD
+    ├── assign_clusters.py          # Scene cluster assignment
+    ├── split.py                    # Train/val/test split with capping
+    ├── generate_synthetic_backgrounds.py
+    ├── fake_background_synthetic_person_placement.py
+    └── batch_background_removal.py
 ```
 
----
-
-## 🔬 Key Experiments
-
-### Experiment 1: Real vs Synthetic CCTV Training
-
-**Goal**: Determine whether synthetic data can replace or match real CCTV performance for person detection.
-
-#### Process Overview
-
-1. **Data Collection**
-
-   - Collected 22,166 real CCTV frames from multiple sources:
-     - 24 YouTube CCTV videos (1,637 frames extracted)
-     - 11,722 home CCTV frames
-     - 8,807 company CCTV frames
-2. **Synthetic Data Generation**
-
-   - Generated ~6,000 synthetic CCTV images using Image-to-Image GenAI:
-     - 50 day backgrounds + 50 night backgrounds
-     - ~6,000 generated persons with hybrid image+text prompts
-     - Used NanoBanana (Google Gemini) for all synthetic generation
-     - No alteration of backgrounds (critical for fair comparison)
-     - Training set size matched to real dataset: 1,795 images for fair comparison
-3. **Preprocessing Pipeline**
-
-   - **Annotation**: Done first on all images using CVAT before any preprocessing steps
-   - **Deduplication**: Used cosine similarity + SSCD embeddings to remove near-identical frames
-   - **Scene Clustering**: Used SSCD (Scene Similarity Clustering Dataset) to group similar camera angles
-   - **Data Capping**: Capped nighttime clusters to avoid data imbalance
-   - **Train/Val/Test Split**: Ensured leakage-free splits per-cluster (no data leakage)
-4. **Training Configuration**
-
-   - Trained two YOLO11n models with identical hyperparameters:
-     - **Real-only model**: Trained on real CCTV data
-     - **Synthetic-only model**: Trained on synthetic CCTV data
-   - Both models used:
-     - `imgsz=832` (high resolution for small objects)
-     - `batch=16`
-     - `lr=2e-4`
-     - `epochs=40`
-     - Backbone unfrozen
-     - RTX 4090 via Vast.ai
-5. **Evaluation**
-
-   - Evaluated both models on the same real CCTV test set only
-   - Metrics: Precision, Recall, mAP@50, mAP@50-95
-
-#### Results
-
-- **Real-trained model performed best**
-- **Synthetic-only model underperformed**
-- **Clear domain gap exists** between synthetic and real CCTV scenes
-- **Conclusion**: Synthetic data cannot fully replace real data at this stage, though it may be useful for augmentation
+Model weights, ONNX files, training run directories, and the raw dataset are not included in this repository due to size and privacy constraints.
 
 ---
 
-### Experiment 2: Quantization & Edge Efficiency (Coming Next)
+## Research Questions and Experiments
 
-**Goal**: Evaluate whether INT8 quantization affects synthetic-trained and real-trained models differently.
+The study is guided by three research questions, addressed through four experiments.
 
-This experiment will reuse the two trained models from Experiment 1. The planned approach involves applying post-training INT8 quantization to both models, comparing performance degradation, and benchmarking runtime speed on Raspberry Pi 5 to determine if synthetic-trained models degrade differently from compression compared to real-trained models.
+### Research Question 1: Can synthetic data match or supplement real CCTV data for person detection?
 
-**Status**: Next steps - to be implemented after Experiment 1 completion.
+Answered by **Experiment 1** and **Experiment 4**.
+
+- **Experiment 1 — Real vs Synthetic Training Data**: Compares a YOLO11n model trained on real CCTV footage against an identical model trained on synthetic CCTV images generated by Gemini 2.5 Flash. Both are evaluated on the same real test set.
+- **Experiment 4 — Synthetic-to-Real Data Ratio**: Tests eleven different synthetic-to-real ratios (0% to 100% in 10% steps) using YOLO26n, to determine whether mixing the two sources can improve performance over real data alone. Each ratio is trained three times with different random selections to account for variance.
+
+### Research Question 2: Which edge-optimised detection architecture provides the best accuracy for person detection on real CCTV footage?
+
+Answered by **Experiment 2**.
+
+- **Experiment 2 — Architecture Comparison**: Trains and evaluates four edge-optimised detectors on the same real CCTV dataset: three CNN-based YOLO models (YOLO11n, YOLOv10n, YOLO26n) and a transformer-based detector (RF-DETR-N). Uses two notebooks: one for the Ultralytics YOLO models and a separate one for the RF-DETR pipeline, which requires a different data format.
+
+### Research Question 3: What is the impact of INT8 quantization on detection accuracy and inference speed on the Raspberry Pi 5?
+
+Answered by **Experiment 3**.
+
+- **Experiment 3 — Quantization and Edge Deployment**: Exports the three YOLO models from Experiment 2 to FP32 ONNX, applies INT8 post-training quantization using ONNX Runtime with calibration on 100 real training images, and benchmarks inference latency and throughput on a Raspberry Pi 5.
 
 ---
 
-### Experiment 3: Detection vs Classification on Raspberry Pi 5 (Coming Next)
+## Dataset
 
-**Goal**: Find the better trade-off between accuracy and FPS for edge deployment.
+### Real CCTV Data
 
-This experiment will compare object detection vs image classification for real-time CCTV analytics. The planned approach involves training both a YOLO detector and a classifier on the same dataset, then evaluating accuracy and FPS on Raspberry Pi 5 to determine the optimal approach for edge deployment.
+Collected from three sources:
 
-**Status**: Next steps - to be implemented after Experiment 2 completion.
+- YouTube Creative Commons CCTV footage (1,637 frames from 24 videos)
+- Home CCTV recordings (11,772 frames)
+- Company-provided CCTV footage for research purposes (8,807 frames)
+- **Total raw frames: 22,216**
 
----
+After deduplication, scene-based capping, and train/val/test splitting:
 
-## 📊 Dataset Details
-
-### Real Data Sources
-
-- **YouTube CCTV Videos**: 24 videos (1,637 frames extracted)
-- **Home CCTV Frames**: 11,722 frames
-- **Company CCTV Frames**: 8,807 frames
-- **Total Raw Frames**: 22,166 frames
-
-### Synthetic Data
-
-- **50 Day Backgrounds**: Residential/commercial outdoor scenes (daytime)
-- **50 Night Backgrounds**: Same scenes but nighttime/grayscale
-- **~6,000 Generated Persons**: Placed on backgrounds using GenAI
-- **Generation Tool**: NanoBanana (Google Gemini)
-- **Background Preservation**: No alteration of backgrounds (critical for fair comparison)
-
-### Dataset Splits (After Preprocessing)
-
-After deduplication, clustering, and capping:
-
-- **Train**: 1,795 images (830 day / 965 night = 46.2% day)
-- **Val**: 664 images (264 day / 400 night = 39.8% day)
-- **Test**: 660 images (260 day / 400 night = 39.4% day)
+- **Train**: 1,795 images
+- **Validation**: 664 images
+- **Test**: 660 images
 - **Total**: 3,119 images
 
-### Preprocessing Steps
+### Synthetic CCTV Data
 
-1. **Annotation**: Done first on all images using CVAT (Computer Vision Annotation Tool)
-2. **Deduplication**: Cosine similarity thresholding using SSCD embeddings (threshold: 0.90)
-3. **Scene Clustering**: SSCD-based clustering to group similar camera angles
-4. **Capping**: Nighttime clusters capped to balance day/night distribution
-5. **Train/Val/Test Split**: Per-cluster allocation to prevent data leakage
+Generated using the Gemini 2.5 Flash generative model. Empty CCTV backgrounds were prepared by removing people from selected real frames, and synthetic people were then generated into variations of these backgrounds.
+
+- **Total generated**: 10,216 images (5,223 daytime, 4,993 nighttime)
+- **Used for training comparisons**: 1,795 training images and 664 validation images
 
 ### Dataset Availability
 
-**Important Note**: Due to privacy constraints, legal considerations, and data protection regulations, the real CCTV dataset cannot be publicly released. Real CCTV footage contains identifiable individuals and is subject to strict privacy requirements.
+Due to privacy requirements and data protection regulations, the real CCTV dataset cannot be publicly released. The synthetic dataset may be made available to the university for research purposes.
 
-However, the **synthetic dataset** can be made available to the university for research purposes. The synthetic dataset contains fully generated CCTV-style images with synthetic persons, free from privacy concerns, and can be used for further research or model development.
+### Dataset Preprocessing
+
+1. **Annotation**: All images annotated in CVAT with a single class label (`person`)
+2. **Deduplication**: Near-identical frames removed using SSCD embeddings and cosine similarity (threshold 0.90)
+3. **Scene grouping**: Remaining frames assigned to 30 camera-view groups using SSCD anchor comparisons
+4. **Capping**: Three largest nighttime views reduced to prevent any single perspective dominating a split
+5. **Train/val/test splitting**: Each camera view assigned entirely to one split to prevent data leakage
 
 ---
 
-## 🛠️ Environment Setup
+## Environment Setup
 
 ### Requirements
 
-- Python 3.8+
-- CUDA-capable GPU (recommended for training)
-- Raspberry Pi 5 (for Experiment 2 & 3 deployment)
+- Python 3.10+
+- NVIDIA GPU recommended for training (experiments used an RTX 4090 via Vast.ai)
+- Raspberry Pi 5 for Experiment 3 inference benchmarking
 
 ### Dependencies
 
-Install the required packages:
-
 ```bash
-# Core ML frameworks
+# Core deep learning frameworks
 pip install torch torchvision
 pip install ultralytics
 
-# Computer vision
-pip install opencv-python pillow
+# ONNX export and quantization (Experiment 3)
+pip install onnx onnxruntime
+pip install onnxruntime-gpu  # for GPU-based quantization
 
-# Embeddings and clustering
-# For deduplication (SSCD model needs to be obtained separately)
-pip install faiss-cpu  # or faiss-gpu if using GPU
-pip install transformers
+# RF-DETR (Experiment 2)
+pip install rfdetr==1.5.0
+pip install rfdetr[metrics]
+pip install albumentations==1.4.21
 
-# Data processing
-pip install pandas numpy
-pip install scikit-learn
+# Image processing and utilities
+pip install pillow opencv-python numpy pyyaml
+pip install pycocotools
 
-# Google GenAI (for synthetic data generation)
-pip install google-genai python-dotenv
-
-# Optional: Jupyter for notebooks
+# Optional: Jupyter for running notebooks interactively
 pip install jupyter
 ```
 
-### Configuration Files
+### Path Configuration
 
-Update the config files in `configs/` to point to your dataset paths:
-
-- `mydata_capped.yaml`: Real CCTV data configuration
-- `mydata_synthetic.yaml`: Synthetic data configuration
-
-Example configuration structure:
-
-```yaml
-path: /path/to/datasets/my_data
-train: /path/to/train_capped.txt
-val: /path/to/val_capped.txt
-test: /path/to/test_capped.txt
-
-nc: 1
-names: ['person']
-```
+The YAML configs and split text files use absolute paths that need to be updated for your environment. Run `configs/setup_paths.py` after cloning to rewrite these paths to match your local directory.
 
 ---
 
-## 🔄 Pipeline Workflow
+## Pipeline Workflow
 
-### 1. Data Collection
+The overall workflow is:
 
-Collect CCTV footage from:
+1. Collect and annotate real CCTV footage
+2. Generate synthetic CCTV data using Gemini 2.5 Flash
+3. Deduplicate real frames and group them by scene
+4. Create leakage-free train/val/test splits
+5. Train and evaluate models for each experiment
+6. Export trained models to ONNX and quantize to INT8 (Experiment 3)
+7. Benchmark on Raspberry Pi 5 (Experiment 3)
 
-- YouTube videos
-- Home CCTV systems
-- Company CCTV systems
-
-Extract frames and organize by source.
-
-### 2. Annotation
-
-**Annotate all images first** using CVAT (Computer Vision Annotation Tool):
-
-- Annotate all collected images before any preprocessing
-- Export annotations in YOLO format
-- Place in `datasets/my_data/labels/`
-
-### 3. Deduplication
-
-Remove near-duplicate frames using cosine similarity:
-
-```bash
-python scripts/dedupe_by_threshold.py \
-    --backend sscd \
-    --model /path/to/sscd_model.pt \
-    --out_dir /path/to/dedupe_results \
-    --threshold 0.90
-```
-
-This script:
-
-- Loads SSCD embeddings (cached)
-- Uses FAISS range search for efficient duplicate detection
-- Outputs `dedupe_keep.txt` and `dedupe_remove.txt`
-
-### 4. Scene Clustering
-
-Assign images to scene clusters using SSCD:
-
-```bash
-python scripts/assign_clusters.py \
-    --backend sscd \
-    --model /path/to/sscd_model.pt \
-    --out_dir /path/to/clustering_results \
-    --counts_only
-```
-
-This script:
-
-- Assigns each image to the nearest scene cluster centroid
-- Outputs `cluster_assignments.csv` and `cluster_counts.csv`
-
-### 5. Capping and Train/Val/Test Split
-
-Create leakage-free splits with day/night balance:
-
-```bash
-python scripts/split.py \
-    --counts_csv /path/to/cluster_counts.csv \
-    --assignments_csv /path/to/cluster_assignments.csv \
-    --out_dir /path/to/output \
-    --seed 42
-```
-
-This script:
-
-- Applies capping to over-represented clusters (nighttime)
-- Allocates clusters to train/val/test to prevent leakage
-- Outputs `train_capped.txt`, `val_capped.txt`, `test_capped.txt`
-
-### 6. Synthetic Data Generation (Optional)
-
-If generating synthetic data:
-
-#### Generate Backgrounds
-
-```bash
-python scripts/generate_synthetic_backgrounds.py
-```
-
-This creates 50 day + 50 night backgrounds.
-
-#### Add Synthetic Persons
-
-```bash
-python scripts/fake_background_synthetic_person_placement.py
-```
-
-This adds synthetic persons to backgrounds using NanoBanana (Google Gemini).
+Preprocessing scripts live in `scripts/` and are used before training begins.
 
 ---
 
-## 🚂 Training Models
+## Running the Experiments
 
-### Experiment 1: Real vs Synthetic Training
+Each experiment is a self-contained Jupyter notebook in `notebooks/`. All notebooks assume the dataset is already prepared and the YAML configs in `configs/` point to the correct paths.
 
-#### Train Real Data Model
+### Experiment 1
 
-Using the Jupyter notebook (`notebooks/Experiment_1.ipynb`) or Python:
+Open `notebooks/Experiment_1.ipynb`. Trains two YOLO11n models (one on real data, one on synthetic) using identical hyperparameters and evaluates both on the same real test set.
 
-```python
-from ultralytics import YOLO
+### Experiment 2
 
-# Load pretrained COCO model
-model = YOLO("yolo11n.pt")
+Open `notebooks/Experiment_2_Ultralytics.ipynb` for the three YOLO models (YOLO11n, YOLOv10n, YOLO26n), and `notebooks/Experiment_2_RFDETR.ipynb` for the transformer-based RF-DETR-N. All four models are trained on the same real CCTV training set and evaluated on the same real test set.
 
-# Train on real CCTV data
-model.train(
-    data="configs/mydata_capped.yaml",
-    epochs=40,
-    freeze=0,          # Fully unfrozen backbone
-    lr0=2e-4,          # Stable learning rate
-    imgsz=832,         # High resolution for small objects
-    batch=16,
-    name="real_unfrozen_e40"
-)
+### Experiment 3
 
-# Evaluate on test set
-metrics = model.val(
-    data="configs/mydata_capped.yaml",
-    split="test",
-    plots=True,
-    save_json=True
-)
+Open `notebooks/Experiment_3_Quantization.ipynb`. Exports the three YOLO models from Experiment 2 to FP32 ONNX, applies INT8 quantization using a calibration set of 100 training images, and records model sizes, accuracy, and inference latency on the Raspberry Pi 5.
 
-print(f"mAP@50: {metrics.box.map50}")
-print(f"mAP@50-95: {metrics.box.map}")
-print(f"Precision: {metrics.box.mp}")
-print(f"Recall: {metrics.box.mr}")
-```
+### Experiment 4
 
-#### Train Synthetic Data Model
+Open `notebooks/Experiment_4_Synthetic_Ratio.ipynb`. Creates mixed training sets at eleven synthetic-to-real ratios using stratified incremental sampling, trains three YOLO26n models per ratio (33 runs total), quantizes each to INT8, and evaluates all models on the real test set.
 
-```python
-from ultralytics import YOLO
+### Shared Training Configuration
 
-model = YOLO("yolo11n.pt")
+All experiments use the following base hyperparameters unless noted:
 
-model.train(
-    data="configs/mydata_synthetic.yaml",
-    epochs=40,
-    freeze=0,
-    lr0=2e-4,
-    imgsz=832,
-    batch=16,
-    name="synthetic_unfrozen_e40"
-)
-
-# Evaluate on real test set (critical for fair comparison)
-metrics = model.val(
-    data="configs/mydata_capped.yaml",  # Real test set!
-    split="test",
-    plots=True,
-    save_json=True
-)
-```
-
-#### Training Configuration
-
-Both models use identical hyperparameters for fairness:
-
-- **Model**: YOLO11n (nano)
-- **Image Size**: 832×832
-- **Batch Size**: 16
-- **Learning Rate**: 2e-4
+- **Image size**: 832×832
+- **Batch size**: 16
+- **Learning rate**: 2×10⁻⁴
 - **Epochs**: 40
-- **Backbone**: Unfrozen
-- **Optimizer**: AdamW (auto)
-- **Augmentation**: Default Ultralytics augmentations
-- **Hardware**: RTX 4090 via Vast.ai
-
-### Experiment 2: Quantization (Coming Next)
-
-This experiment is planned as a next step. Detailed implementation instructions will be added once Experiment 2 begins.
+- **Backbone**: unfrozen
+- **Framework**: Ultralytics (except RF-DETR, which uses the `rfdetr` package)
 
 ---
 
-## 🔄 Reproducing Experiments
+## Results Summary
 
-### Experiment 1: Real vs Synthetic
+### Experiment 1 — Real vs Synthetic Training Data
 
-1. **Prepare Data**
+| Model | mAP@0.50 | mAP@0.50:0.95 | Precision | Recall |
+|---|---|---|---|---|
+| Baseline (COCO pretrained) | 0.853 | 0.671 | 0.922 | 0.753 |
+| Real-trained YOLO11n | **0.931** | **0.735** | **0.949** | **0.893** |
+| Synthetic-trained YOLO11n | 0.719 | 0.503 | 0.769 | 0.615 |
 
-   **Important**: Annotate all images first using CVAT before running any preprocessing steps.
-   
-   ```bash
-   # Step 1: Run deduplication using SSCD
-   python scripts/dedupe_by_threshold.py \
-       --backend sscd \
-       --model /path/to/sscd_model.pt \
-       --out_dir dedupe_results \
-       --threshold 0.90
+Training on real data alone is significantly better than training on synthetic data alone. The synthetic-trained model shows a clear domain gap, particularly in recall.
 
-   # Step 2: Run clustering
-   python scripts/assign_clusters.py \
-       --backend sscd \
-       --model /path/to/sscd_model.pt \
-       --out_dir clustering_results \
-       --counts_only
+### Experiment 2 — Architecture Comparison
 
-   # Step 3: Create splits (includes capping)
-   python scripts/split.py \
-       --counts_csv clustering_results/cluster_counts.csv \
-       --assignments_csv clustering_results/cluster_assignments.csv \
-       --out_dir data/
-   ```
-2. **Update Config Files**
+| Model | mAP@0.50 | mAP@0.50:0.95 | Precision | Recall |
+|---|---|---|---|---|
+| YOLO11n | 0.931 | 0.735 | 0.949 | 0.892 |
+| YOLOv10n | **0.935** | 0.702 | **0.960** | 0.859 |
+| YOLO26n | 0.924 | **0.745** | 0.931 | **0.884** |
+| RF-DETR-N | 0.916 | 0.724 | -- | 0.770 |
 
-   - Edit `configs/mydata_capped.yaml` with correct paths
-   - Edit `configs/mydata_synthetic.yaml` with synthetic data paths
-3. **Train Models**
+All three YOLO models perform closely. YOLO26n achieves the highest localisation quality, YOLOv10n the highest precision, and YOLO11n the highest recall. The transformer-based RF-DETR-N underperforms, likely due to the small training set size and its much larger parameter count.
 
-   - Open `notebooks/Experiment_1.ipynb`
-   - Run training cells for both real and synthetic models
-   - Or use the Python scripts above
-4. **Evaluate**
+### Experiment 3 — Quantization and Raspberry Pi 5 Deployment
 
-   - Both models evaluate on the same real test set
-   - Compare metrics: mAP@50, mAP@50-95, Precision, Recall
+| Model | Format | Avg Latency (ms) | FPS | Size (MB) | mAP@0.50:0.95 |
+|---|---|---|---|---|---|
+| YOLO11n | FP32 | 328.7 | 3.04 | 10.2 | 0.723 |
+| YOLO11n | INT8 | 207.5 | 4.82 | 5.4 | 0.699 |
+| YOLOv10n | FP32 | 385.8 | 2.59 | 9.0 | 0.688 |
+| YOLOv10n | INT8 | 246.8 | 4.05 | 4.8 | 0.700 |
+| YOLO26n | FP32 | 333.9 | 3.00 | 9.5 | 0.742 |
+| YOLO26n | INT8 | **188.1** | **5.32** | **4.6** | **0.712** |
 
-### Experiment 2: Quantization (Coming Next)
+INT8 quantization reduces model size by 47–52% and improves inference speed by 1.56–1.78×. YOLO26n benefits the most and emerges as the best model for Raspberry Pi 5 deployment.
 
-Detailed reproduction instructions will be provided once Experiment 2 is implemented.
+### Experiment 4 — Synthetic-to-Real Data Ratio
 
-### Experiment 3: Detection vs Classification (Coming Next)
+Training on real data alone (0% synthetic) achieves the strongest overall performance across all metrics. A 10% synthetic proportion performs comparably on mAP@0.50:0.95 within one standard deviation but scores lower on every other metric. Beyond 10% synthetic, accuracy declines steadily, and 100% synthetic causes the model to collapse. No mixture improves over the real-only baseline.
 
-Detailed reproduction instructions will be provided once Experiment 3 is implemented.
+### Overall Finding
+
+The recommended configuration for affordable, privacy-friendly CCTV person detection on edge hardware is **YOLO26n, trained on real CCTV data and quantized to INT8**. This runs at 5.32 FPS on a Raspberry Pi 5, requires only 4.6 MB of storage, and retains strong detection accuracy.
 
 ---
 
-## 📊 Results Summary
+## License
 
-### Experiment 1: Real vs Synthetic (Completed)
+This project was completed as part of a Final Year Project at Technological University Dublin (TU Dublin).
 
-#### Baseline (COCO Pretrained)
+Copyright © 2026 Tadhg Roche. All rights reserved. The code in this repository is made available for academic review. The real CCTV dataset cannot be shared due to privacy constraints; the synthetic dataset may be made available to the university for research purposes.
 
-- **mAP@0.50**: 0.853
-- **mAP@0.50:0.95**: 0.671
-- **Precision**: 0.922
-- **Recall**: 0.753
-
-#### Real-Trained Model
-
-- **Model**: `runs/detect/real_unfrozen_e50/weights/best.pt`
-- **Training Data**: 1,795 real CCTV images
-- **mAP@0.50**: 0.931
-- **mAP@0.50:0.95**: 0.735
-- **Precision**: 0.949
-- **Recall**: 0.893
-
-#### Synthetic-Trained Model
-
-- **Model**: `runs/detect/synthetic_unfrozen_e40/weights/best.pt`
-- **Training Data**: 1,795 synthetic CCTV images (matched to real dataset size)
-- **mAP@0.50**: 0.719
-- **mAP@0.50:0.95**: 0.503
-- **Precision**: 0.769
-- **Recall**: 0.615
-
-#### Key Findings
-
-- Real-trained model outperforms synthetic-only model
-- Clear domain gap exists between synthetic and real CCTV scenes
-- Synthetic data cannot fully replace real data, but may be useful for augmentation
-
----
-
-## 🔮 Future Work
-
-### Experiment 2: Quantization Impact
-
-- [ ] Apply INT8 quantization to both models
-- [ ] Measure accuracy degradation
-- [ ] Benchmark FPS on Raspberry Pi 5
-- [ ] Analyze quantization effects on synthetic vs real models
-
-### Experiment 3: Detection vs Classification
-
-- [ ] Train image classifier on same dataset
-- [ ] Compare detection vs classification accuracy
-- [ ] Benchmark FPS on Raspberry Pi 5
-- [ ] Determine optimal architecture for edge deployment
-
-### Additional Improvements
-
-- [ ] Hybrid training: Combine real + synthetic data
-- [ ] Domain adaptation techniques
-- [ ] More diverse synthetic data generation
-- [ ] Real-time inference optimization
-- [ ] Deployment pipeline for Raspberry Pi 5
-
----
-
----
-
-## 📝 License
-
-This project was completed as part of a Final Year Project (FYP) at Technological University Dublin (TU Dublin).
-
-Copyright © 2025 Tadhg Roche
-
-All rights reserved. This work is the intellectual property of the author and was submitted as part of academic requirements. The synthetic dataset may be made available to the university for research purposes, but the real CCTV dataset cannot be shared due to privacy constraints.
-
-## 👤 Author
+## Author
 
 **Tadhg Roche**
+School of Computer Science, Technological University Dublin
+Email: C22348761@mytudublin.ie
 
-- Entrepreneur, Developer, IT Student, AI Engineer
-
----
-
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - Ultralytics for the YOLO framework
+- Roboflow for the RF-DETR detector
 - Vast.ai for GPU compute resources
-- Open source community for tools and libraries
-
----
-
-*Last updated: November 2025*
