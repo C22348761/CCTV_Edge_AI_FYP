@@ -1,0 +1,21 @@
+# Core detection frameworks
+ultralytics
+rfdetr==1.5.0
+
+# ONNX runtime
+# Use 'onnxruntime-gpu' for CUDA training environments,
+# or 'onnxruntime' for CPU-only deployment (e.g. Raspberry Pi 5).
+onnx
+onnxruntime
+
+# Data augmentation (pinned for RF-DETR compatibility)
+albumentations==1.4.21
+
+# Image / numerical / plotting
+Pillow
+numpy
+matplotlib
+PyYAML
+
+# COCO evaluation metrics
+pycocotools
