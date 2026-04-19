@@ -56,6 +56,20 @@ CCTV_Edge_AI_FYP/
 │   ├── Experiment_2_RFDETR.ipynb   # RF-DETR transformer comparison
 │   ├── Experiment_3_Quantization.ipynb # ONNX export and INT8 quantization
 │   └── Experiment_4_Synthetic_Ratio.ipynb # Synthetic-to-real ratio study
+├── rp5/                            # Raspberry Pi 5 deployment bundle (Experiment 3)
+│   ├── bench_yolo11n_fp32.py       # Per-model benchmark scripts
+│   ├── bench_yolo11n_int8.py
+│   ├── bench_yolo26n_fp32.py
+│   ├── bench_yolo26n_int8.py
+│   ├── bench_yolov10n_fp32.py
+│   ├── bench_yolov10n_int8.py
+│   ├── yolo11n_fp32.onnx           # FP32 and INT8 ONNX models
+│   ├── yolo11n_int8.onnx
+│   ├── yolo26n_fp32.onnx
+│   ├── yolo26n_int8.onnx
+│   ├── yolov10n_fp32.onnx
+│   ├── yolov10n_int8.onnx
+│   └── results_*.json              # Recorded latency/FPS/size results
 └── scripts/                        # Preprocessing and dataset pipeline scripts
     ├── dedupe_by_threshold.py      # Near-duplicate removal using SSCD
     ├── assign_clusters.py          # Scene cluster assignment
@@ -65,7 +79,7 @@ CCTV_Edge_AI_FYP/
     └── batch_background_removal.py
 ```
 
-Model weights, ONNX files, training run directories, and the raw dataset are not included in this repository due to size and privacy constraints.
+Training weights (`.pt`), training run directories, and the raw dataset are not included in this repository due to size and privacy constraints. The exported ONNX models used for Raspberry Pi 5 benchmarking are included under `rp5/`.
 
 ---
 
@@ -202,6 +216,16 @@ Open `notebooks/Experiment_2_Ultralytics.ipynb` for the three YOLO models (YOLO1
 ### Experiment 3
 
 Open `notebooks/Experiment_3_Quantization.ipynb`. Exports the three YOLO models from Experiment 2 to FP32 ONNX, applies INT8 quantization using a calibration set of 100 training images, and records model sizes, accuracy, and inference latency on the Raspberry Pi 5.
+
+The self-contained deployment bundle lives in `rp5/` and contains the six exported ONNX models (three architectures × FP32/INT8), one benchmark script per model, and the recorded results as JSON. Each bench script loads its model, warms up, runs inference over an `images/` folder placed alongside it on the Pi, and writes a matching `results_*.json`. To reproduce:
+
+```bash
+# On the Raspberry Pi 5
+pip install onnxruntime numpy Pillow
+cd rp5/
+# place your test images in rp5/images/
+python bench_yolo26n_int8.py
+```
 
 ### Experiment 4
 

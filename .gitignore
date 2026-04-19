@@ -9,6 +9,7 @@
 runs/
 *.onnx
 *.engine
+!rp5/*.onnx
 
 # Python
 __pycache__/
